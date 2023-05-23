@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Audio Processing</title>
+</head>
+<body>
+  <div>
+    <h1>Audio Processing</h1>
+    <h2>Zhenansky NM (1207050132)</h2>
+  </div>
+  <input type="file" id="audioInput">
+  <br>
+  <label for="startTime">Start Time:</label>
+  <input type="number" id="startTime" step="0.01">
+  <br>
+  <label for="endTime">End Time:</label>
+  <input type="number" id="endTime" step="0.01">
+  <br>
+  <button onclick="processAudio()">Process Audio</button>
+
+  <h2>Original Audio</h2>
+  <audio id="originalAudio" controls></audio>
+
+  <h2>Processed Audio</h2>
+  <audio id="processedAudio" controls></audio>
+
+  <script>
+    let audioContext;
+    let audioBuffer;
+
+    // Mengambil elemen input file audio
+    const audioInput = document.getElementById('audioInput');
+
+    // Mengambil elemen audio sebelum dan sesudah pemrosesan
+    const originalAudioElement = document.getElementById('originalAudio');
+    const processedAudioElement = document.getElementById('processedAudio');
+
+    // Fungsi untuk mengunggah audio
+    audioInput.addEventListener('change', function(event) {
+      const file = event.target.files[0];
+      const reader = new FileReader();
+
+      reader.onload = function(event) {
+        const arrayBuffer = event.target.result;
+        decodeAudioData(arrayBuffer);
+      };
+
+      reader.readAsArrayBuffer(file);
+    });
+
+    // Fungsi untuk mendekode data audio menjadi AudioBuffer
+    function decodeAudioData(arrayBuffer) {
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      audioContext.decodeAudioData(arrayBuffer, function(buffer) {
+        audioBuffer = buffer;
+        console.log('Audio file decoded');
+
+        // Memuat audio ke elemen audio sebelum pemrosesan
+        originalAudioElement.src = URL.createObjectURL(new Blob([arrayBuffer]));
+      }, function(error) {
+        console.error('Error decoding audio file:', error);
+      });
+    }
+
+    // Fungsi untuk memproses audio
+    function processAudio() {
+      if (!audioBuffer) {
+        console.error('No audio file selected');
+        return;
+      }
+
+      // Mendapatkan nilai waktu mulai dan waktu akhir dari input pengguna
+      const startTimeInput = document.getElementById('startTime');
+      const endTimeInput = document.getElementById('endTime');
+      const startTime = parseFloat(startTimeInput.value);
+      const endTime = parseFloat(endTimeInput.value);
+
+      if (isNaN(startTime) || isNaN(endTime) || startTime >= endTime) {
+        console.error('Invalid start time or end time');
+        return;
+      }
+
+      // Mendapatkan durasi audio dan jumlah sampel
+      const duration = audioBuffer.duration;
+      const sampleRate = audioBuffer.sampleRate;
+      const numChannels = audioBuffer.numberOfChannels;
+      const startSample = Math.floor(startTime * sampleRate);
+      const endSample = Math.floor(endTime * sampleRate);
+
+      // Membuat AudioBuffer baru untuk audio yang dipotong
+      const newBuffer = audioContext.createBuffer(numChannels, endSample - startSample, sampleRate);
+
+      // Memotong audio berdasarkan waktu mulai dan waktu akhir
+      for (let channel = 0; channel < numChannels; channel++) {
+        const channelData = audioBuffer.getChannelData(channel);
+        const newChannelData = newBuffer.getChannelData(channel);
+
+        for (let i = startSample, j = 0; i < endSample; i++, j++) {
+          newChannelData[j] = channelData[i];
+        }
+      }
+
+      console.log('Audio processed:', newBuffer);
+
+      // Memuat audio yang diproses ke elemen audio sesudah pemrosesan
+      const newBufferArrayBuffer = arrayBufferSlice(newBuffer, startSample * numChannels * 4, endSample * numChannels * 4);
+      processedAudioElement.src = URL.createObjectURL(new Blob([newBufferArrayBuffer]));
+    }
+
+    // Fungsi untuk memotong array buffer
+    function arrayBufferSlice(buffer, start, end) {
+      const slicedBuffer = buffer.getChannelData(0).subarray(start, end);
+      const numberOfChannels = buffer.numberOfChannels;
+      const newBuffer = audioContext.createBuffer(numberOfChannels, slicedBuffer.length, buffer.sampleRate);
+
+      for (let channel = 0; channel < numberOfChannels; channel++) {
+        newBuffer.getChannelData(channel).set(slicedBuffer, 0);
+      }
+
+      return bufferToWave(newBuffer);
+    }
+
+    // Fungsi untuk mengonversi buffer audio menjadi file wave
+    function bufferToWave(buffer) {
+      const interleaved = interleave(buffer);
+      const dataLength = interleaved.length * 2;
+      const bufferLength = dataLength + 44;
+      const arrayBuffer = new ArrayBuffer(bufferLength);
+      const view = new DataView(arrayBuffer);
+      const channels = buffer.numberOfChannels;
+      const sampleRate = buffer.sampleRate;
+      const bitsPerSample = 16;
+
+      // Menulis header file wave
+      writeString(view, 0, 'RIFF');
+      view.setUint32(4, bufferLength - 8, true);
+      writeString(view, 8, 'WAVE');
+      writeString(view, 12, 'fmt ');
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true);
+      view.setUint16(22, channels, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, sampleRate * channels * bitsPerSample / 8, true);
+      view.setUint16(32, channels * bitsPerSample / 8, true);
+      view.setUint16(34, bitsPerSample, true);
+      writeString(view, 36, 'data');
+      view.setUint32(40, dataLength, true);
+
+      // Menulis data audio
+      floatTo16BitPCM(view, 44, interleaved);
+
+      return arrayBuffer;
+    }
+
+    // Fungsi untuk menggabungkan data audio dari setiap saluran menjadi satu saluran
+    function interleave(buffer) {
+      const numberOfChannels = buffer.numberOfChannels;
+      const length = buffer.length * numberOfChannels;
+      const result = new Float32Array(length);
+      const input = [];
+
+      for (let channel = 0; channel < numberOfChannels; channel++) {
+        input.push(buffer.getChannelData(channel));
+      }
+
+      let offset = 0;
+
+      for (let i = 0; i < buffer.length; i++) {
+        for (let channel = 0; channel < numberOfChannels; channel++) {
+          result[offset] = input[channel][i];
+          offset++;
+        }
+      }
+
+      return result;
+    }
+
+    // Fungsi untuk menulis string pada DataView
+    function writeString(view, offset, string) {
+      for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+      }
+    }
+
+    // Fungsi untuk mengonversi bilangan float menjadi bilangan 16-bit PCM
+    function floatTo16BitPCM(output, offset, input) {
+      for (let i = 0; i < input.length; i++, offset += 2) {
+        const sample = Math.max(-1, Math.min(1, input[i]));
+        output.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+      }
+    }
+  </script>
+</body>
+</html>
