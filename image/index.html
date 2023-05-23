@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Image Processing</title>
+  <style>
+    canvas {
+      border: 1px solid black;
+      margin-top: 10px;
+    }
+    .image-container {
+      display: flex;
+    }
+    .image-container img {
+      margin: 5px;
+    }
+  </style>
+</head>
+<body>
+  <input type="file" id="fileInput" accept="image/*">
+  <div class="image-container">
+    <div>
+      <h3>Gambar Asli</h3>
+      <img id="originalImage">
+    </div>
+    <div>
+      <h3>Gambar Setelah Kompresi</h3>
+      <img id="compressedImage">
+    </div>
+    <div style="margin-left: 20px;">
+      <h3>Gambar Setelah Crop</h3>
+      <img id="croppedImage">
+    </div>
+  </div>
+  <canvas id="canvas" hidden></canvas>
+
+  <script>
+    const fileInput = document.getElementById('fileInput');
+    const originalImage = document.getElementById('originalImage');
+    const compressedImage = document.getElementById('compressedImage');
+    const croppedImage = document.getElementById('croppedImage');
+    const canvas = document.getElementById('canvas');
+    const context = canvas.getContext('2d');
+
+    fileInput.addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+
+      reader.onload = function(event) {
+        const img = new Image();
+        img.onload = function() {
+          canvas.width = img.width;
+          canvas.height = img.height;
+          context.drawImage(img, 0, 0);
+
+          // Panggil fungsi kompresi di sini
+          const compressedImageDataUrl = compressImage(img, 0.7);
+          compressedImage.src = compressedImageDataUrl;
+
+          // Panggil fungsi crop di sini
+          // contoh: cropImage(100, 100, 300, 300);
+          cropImage(100, 100, 300, 300);
+
+          // Tampilkan gambar asli
+          originalImage.src = event.target.result;
+
+          // Tampilkan gambar hasil crop
+          const croppedImageDataUrl = canvas.toDataURL();
+          croppedImage.src = croppedImageDataUrl;
+        }
+        img.src = event.target.result;
+      }
+      reader.readAsDataURL(file);
+    });
+
+    // Fungsi untuk kompresi gambar
+    function compressImage(image, quality) {
+      const tempCanvas = document.createElement('canvas');
+      const tempContext = tempCanvas.getContext('2d');
+      tempCanvas.width = image.width;
+      tempCanvas.height = image.height;
+      tempContext.drawImage(image, 0, 0);
+
+      const compressedImageDataUrl = tempCanvas.toDataURL('image/jpeg', quality);
+      return compressedImageDataUrl;
+    }
+
+    // Fungsi untuk crop gambar
+    function cropImage(x, y, width, height) {
+      const tempCanvas = document.createElement('canvas');
+      const tempContext = tempCanvas.getContext('2d');
+      tempCanvas.width = width;
+      tempCanvas.height = height;
+      tempContext.drawImage(canvas, x, y, width, height, 0, 0, width, height);
+
+      canvas.width = width;
+      canvas.height = height;
+      context.drawImage(tempCanvas, 0, 0);
+    }
+  </script>
+</body>
+</html>
